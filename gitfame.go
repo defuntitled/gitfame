@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 )
 
 func parse_ls_tree(cmd *exec.Cmd) ([]string, error) {
@@ -73,6 +74,22 @@ func calc_fame(path, repo_path, revision string, sema chan struct{}, results cha
 	}
 }
 
+func draw_progress_animation(done chan struct{}) {
+	image_idx := 0
+	image := [2]string{"(.)(.)", "(*)(*)"}
+	for {
+		select {
+		case <-done:
+			return
+		default:
+			fmt.Printf("\r%v", image[image_idx])
+			image_idx++
+			image_idx %= 2
+			time.Sleep(time.Second)
+		}
+	}
+}
+
 func main() {
 	repo_path := flag.String("repo", ".", "path to repository wich been calcilated")
 	revision := flag.String("rev", "HEAD", "hash of commit which been calculated")
@@ -87,7 +104,7 @@ func main() {
 	results := make(chan map[string]int, 20)
 	result := make(map[string]int)
 	done := make(chan struct{})
-	go func(result map[string]int, results chan map[string]int, done chan struct{}) {
+	go func() {
 		for {
 			select {
 			case i_result := <-results:
@@ -96,8 +113,9 @@ func main() {
 				return
 			}
 		}
-	}(result, results, done)
+	}()
 	var wg sync.WaitGroup
+	go draw_progress_animation(done)
 	for _, path := range paths {
 		select {
 		case sema <- struct{}{}:
@@ -110,6 +128,7 @@ func main() {
 	}
 	wg.Wait()
 	close(done)
+	fmt.Print("\n")
 	for name, val := range result {
 		fmt.Printf("%v commited %v strings\n", name, val)
 	}
